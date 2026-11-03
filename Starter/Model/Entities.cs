@@ -60,7 +60,8 @@ public partial class OrderLine
 public partial class Product : ISoftDelete
 {
     public int Id { get; set; }
-    [MaxLength(120)]
+    // TODO: 8. Anotación de datos: el nombre del producto admite como máximo 120 caracteres ([MaxLength(120)]).
+
     public string Name { get; set; } = "";
     public string Category { get; set; } = "";
     public decimal Price { get; set; }

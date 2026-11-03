@@ -1,12 +1,17 @@
-# Lab 1 · Tecnologías de acceso a datos (Solution)
+# Lab 2 · Construcción de modelos (Starter)
 
-**Duración:** 40 min (las Partes B y los retos opcionales son trabajo autónomo) · **Requisitos:** .NET 8 SDK (sin servidor de base de datos: usa SQLite)
+**Duración:** 50 min (las Partes B y los retos opcionales son trabajo autónomo) · **Requisitos:** .NET 8 SDK (sin servidor de base de datos: usa SQLite)
 
 ## Objetivo
 
-Resolver la misma consulta con **ADO.NET**, **Dapper** y **EF Core**, comparar las tres y decidir cuándo usar cada una. Aprender también el ciclo de vida correcto del `DbContext`.
+Configurar un modelo con **Fluent API** (precisión, índices, relaciones, tipos propios, conversores y herencia) y gestionar su evolución con **migraciones** y **scaffolding**.
 
-Solución completa del lab. Los `TODO` del Starter están resueltos y comentados abajo. Las pruebas son las mismas: **todas deben pasar**.
+## Cómo trabajar
+
+1. Abre esta carpeta en tu IDE (o en una terminal).
+2. Ejecuta las pruebas: **fallarán** (o darán `NotImplementedException`); es lo esperado.
+3. Busca los `// TODO` y resuélvelos uno a uno, en el orden de abajo.
+4. Vuelve a ejecutar las pruebas hasta que todo esté en verde. **No modifiques las pruebas.**
 
 ```bash
 cd Starter                       # (o Solution)
@@ -18,65 +23,100 @@ dotnet test --filter "FullyQualifiedName~Nombre"   # solo las que contengan Nomb
 
 | Fichero | Contenido |
 |---|---|
-| `Lab/Acceso.cs` | las tres implementaciones y el servicio con un contexto por operación (aquí están los `TODO`) |
-| `Tests/AccesoTests.cs` | las pruebas que hacen de especificación (no se modifican) |
+| `Data/ModelConfig.cs` | la configuración del modelo: ocho `TODO` (1-7 y N:M) |
+| `Lab/Jerarquias.cs` | dos contextos mínimos para comparar TPT y TPC |
+| `Data/DesignTimeFactory.cs` | permite ejecutar `dotnet ef` sin aplicación web (ya hecho) |
+| `Model/Entities.cs` | las entidades de la tienda (aquí va la anotación `[MaxLength]`; puedes añadir `Customer.Phone` para la Parte B) |
+| `Tests/ModeloTests.cs` | pruebas que inspeccionan el modelo y el esquema generado |
 
 ## Tareas
 
-### 1. ADO.NET
+### 1. Precisión de decimales
 
-**Dónde:** `Acceso.ClientesPorCiudadAdo`  
-**Qué hacer / guía:** Crea el comando con `cn.CreateCommand()`, escribe el `SELECT Id, Name FROM Customers WHERE City = $c ORDER BY Id`, añade el parámetro con `Parameters.AddWithValue("$c", ciudad)` y recorre el `DataReader` con `while (rd.Read())` mapeando cada fila a un `ClienteDto`.  
-**Lo valida:** `Las_tres_tecnologias_devuelven_lo_mismo`, `Ado_con_parametro_resiste_inyeccion`
+**Dónde:** `ModelConfig.cs`, `Product.Price`  
+**Qué hacer / guía:** `b.Entity<Product>().Property(p => p.Price).HasPrecision(10, 2);`  
+**Lo valida:** `T1_precio_con_precision_10_2`
 
-**Por qué así:** Mucho código para una consulta simple, pero es la base de todo lo demás. El parámetro hace que el valor nunca se interprete como SQL.
+### 2. Token de concurrencia
 
-### 2. Dapper
+**Dónde:** `Product.Version`  
+**Qué hacer / guía:** `.Property(p => p.Version).IsConcurrencyToken()`  
+**Lo valida:** `T2_version_es_token_de_concurrencia`
 
-**Dónde:** `Acceso.ClientesPorCiudadDapper`  
-**Qué hacer / guía:** Tú escribes el SQL, Dapper hace el mapeo: `cn.Query<ClienteDto>(sql, new { ciudad }).ToList()`. En el SQL el parámetro se llama `@ciudad` (como la propiedad del objeto anónimo).  
-**Lo valida:** `Las_tres_tecnologias_devuelven_lo_mismo`
+### 3. Índice único
 
-**Por qué así:** Una línea de código real. El SQL sigue en una cadena: si renombras la columna `City`, falla en ejecución, no al compilar.
+**Dónde:** `Customer.Email`  
+**Qué hacer / guía:** `HasIndex(c => c.Email).IsUnique()`  
+**Lo valida:** `T3_email_tiene_indice_unico`, `Email_duplicado_es_rechazado_por_la_base`
 
-### 3. EF Core
+### 4. Tipo propio (owned)
 
-**Dónde:** `Acceso.ClientesPorCiudadEf`  
-**Qué hacer / guía:** LINQ sobre `db.Customers`: `AsNoTracking()`, `Where`, `OrderBy`, `Select` a `ClienteDto`, `ToList()`. Al ser una lectura pura no necesitamos seguimiento de cambios.  
-**Lo valida:** `Las_tres_tecnologias_devuelven_lo_mismo`, `Ef_no_rastrea_las_entidades_de_una_lectura`
+**Dónde:** `Customer.Address`  
+**Qué hacer / guía:** `OwnsOne(c => c.Address)`: las columnas `Address_Street` y `Address_PostalCode` van en la tabla `Customers`.  
+**Lo valida:** `T4_address_es_tipo_propio`, `El_script_de_creacion_refleja_el_modelo`
 
-**Por qué así:** LINQ tipado: el compilador protege los nombres de propiedades. El SQL lo genera EF Core (actívalo con `.LogTo(Console.WriteLine)` para verlo).
+### 5. Relación con borrado restringido
 
-### 4. Un DbContext por operación
+**Dónde:** `Order.Customer`  
+**Qué hacer / guía:** `HasOne(o => o.Customer).WithMany(c => c.Orders).HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict)`  
+**Lo valida:** `T5_borrado_de_cliente_restringido`, `No_se_puede_borrar_un_cliente_con_pedidos`
 
-**Dónde:** `ClienteServicio.Crear` y `ClienteServicio.Contar`  
-**Qué hacer / guía:** El servicio recibe un `Func<TiendaContext>` (en una app real sería un `IDbContextFactory<T>`). En cada método crea un contexto nuevo con `_factory()` dentro de un `using`: nunca guardes uno en un campo.  
-**Lo valida:** `El_servicio_usa_un_contexto_por_operacion`
+### 6. Enum como texto
 
-**Por qué así:** El contexto es ligero y no es seguro entre hilos: uno por unidad de trabajo. En ASP.NET Core lo hace `AddDbContext` (scoped por petición).
+**Dónde:** `Order.Status`  
+**Qué hacer / guía:** `HasConversion<string>().HasMaxLength(20)`  
+**Lo valida:** `T6_estado_se_guarda_como_texto`
 
-## Parte de diseño (sin código)
+### 7. Herencia TPH
 
-Rellena la tabla justificando tu elección en cada escenario y defiéndela en 3 minutos.
+**Dónde:** `Payment`  
+**Qué hacer / guía:** `HasDiscriminator<string>("Tipo").HasValue<PagoTarjeta>("T").HasValue<Transferencia>("B")`  
+**Lo valida:** `T7_pagos_con_discriminador_Tipo`, `Pagos_polimorficos_se_guardan_y_se_leen`
 
-| Escenario | Tecnología elegida | Riesgo principal | Mitigación |
-|---|---|---|---|
-| Tienda online con catálogo, pedidos y stock | EF Core | N+1 y contexto compartido | `Include`/proyecciones, contexto scoped por petición, migraciones |
-| Informe nocturno con 5 millones de filas de ventas | Dapper / SQL (o EF Core con `AsNoTracking` + streaming) | Memoria al materializar | Streaming y agregación en la base de datos |
-| App móvil que funciona sin conexión y sincroniza luego | EF Core + SQLite local | Conflictos al sincronizar | Token de concurrencia y política de resolución (módulo 5) |
-| Ingestión de eventos de sensores (50 000 msg/s) | ADO.NET / bulk copy o almacén específico | El ORM no está pensado para ese volumen | Lotes con `SqlBulkCopy` o cola + escritor dedicado |
+### 8. Anotación de datos
 
-> Orientativo: lo importante es la justificación, no coincidir con esta tabla.
+**Dónde:** `Model/Entities.cs`, `Product.Name`  
+**Qué hacer / guía:** Añade `[MaxLength(120)]` sobre la propiedad `Name` (el `TODO` está dentro de la clase).  
+**Lo valida:** `T8_el_nombre_del_producto_tiene_longitud_maxima_120`
+
+### 9. Relación N:M con tabla propia
+
+**Dónde:** `ModelConfig.cs`  
+**Qué hacer / guía:** `b.Entity<Product>().HasMany(p => p.Tags).WithMany(t => t.Products).UsingEntity(j => j.ToTable("ProductTags"));`  
+**Lo valida:** `T9_relacion_N_M_con_tabla_ProductTags`, `T9_los_productos_se_etiquetan_y_se_consultan_por_etiqueta`
+
+### 10. TPT: una tabla por tipo
+
+**Dónde:** `Lab/Jerarquias.cs`, `PagosTptContext`  
+**Qué hacer / guía:** `UseTptMappingStrategy()` sobre `Payment` y `ToTable("PagosTarjeta")` / `ToTable("Transferencias")` para los subtipos.  
+**Lo valida:** `T10_TPT_una_tabla_por_tipo_con_tabla_base`
+
+### 11. TPC: una tabla por tipo concreto
+
+**Dónde:** `Lab/Jerarquias.cs`, `PagosTpcContext`  
+**Qué hacer / guía:** `UseTpcMappingStrategy()` sobre `Payment` y las mismas tablas para los subtipos.  
+**Lo valida:** `T11_TPC_sin_tabla_base_y_columnas_repetidas`
+
+## Parte B · Migraciones y scaffolding (sin pruebas automáticas)
+
+Con las siete tareas hechas, ejecuta en la carpeta del lab:
+
+```bash
+dotnet tool install --global dotnet-ef --version 8.*                      # una sola vez
+dotnet ef migrations add Inicial                     # genera la carpeta Migrations/
+dotnet ef database update                            # crea tienda.db
+```
+
+1. Abre `Migrations/*_Inicial.cs` y localiza el índice único del email, la columna `Address_Street` y la columna `Tipo`.
+2. Añade `public string? Phone { get; set; }` a `Customer`, crea la migración `AnadirTelefono` y mira su `Up`/`Down`.
+3. Genera el script SQL con `dotnet ef migrations script -o deploy.sql` (en SQL Server añadirías `--idempotent`; **SQLite no lo soporta**).
+4. Revierte con `dotnet ef database update Inicial` y elimina la última con `dotnet ef migrations remove`.
+5. Scaffolding inverso: `dotnet ef dbcontext scaffold "Data Source=tienda.db" Microsoft.EntityFrameworkCore.Sqlite --output-dir Scaffold --context ScaffoldContext --force`. Compara las entidades generadas con las tuyas: ¿qué convenciones coinciden y cuáles no?
 
 ## Reto opcional
 
-Añade al `AccesoTests` una cuarta variante `ClientesPorCiudadEfSql` con `FromSql($"...{ciudad}...")` y comprueba que genera un parámetro y no una concatenación.
+Añade un enum `Estado` a `Payment` guardado como texto y configura **todos** los enums del modelo a la vez con `ConfigureConventions` (`c.Properties<Enum>().HaveConversion<string>()`).
 
-## Notas para el profesor
+## Entregable
 
-Pide a los alumnos que comparen líneas de código y que **renombren la columna `City`** en `Entities.cs`: ¿qué versión falla al compilar y cuál al ejecutar? Es la mejor forma de ver el valor del tipado de EF Core. En la parte de diseño, no hay una respuesta única: valora la justificación.
-
-### Errores frecuentes
-
-- Usar `new TiendaContext(...)` una sola vez al arrancar y guardarlo: provoca estado sucio y fallos de concurrencia.
-- Concatenar `ciudad` en el SQL de ADO.NET o Dapper (inyección SQL).
+Todas las pruebas en verde y una nota breve (5 líneas) con lo que más te ha sorprendido de construcción de modelos.
