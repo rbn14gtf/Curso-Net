@@ -15,20 +15,31 @@ public static class Acceso
 {
     public static List<ClienteDto> ClientesPorCiudadAdo(SqliteConnection cn, string ciudad)
     {
-        // TODO: Con ADO.NET: SqlCommand/SqliteCommand con un parámetro $c, ordenado por Id, mapeando a mano cada fila a ClienteDto.
-        throw new NotImplementedException();
+        using var cmd = cn.CreateCommand();
+        cmd.CommandText = "SELECT Id, Name FROM Customers WHERE City = $c ORDER BY Id";
+        cmd.Parameters.AddWithValue("$c", ciudad);
+
+        var lista = new List<ClienteDto>();
+        using var rd = cmd.ExecuteReader();
+        while (rd.Read())
+            lista.Add(new ClienteDto { Id = rd.GetInt32(0), Name = rd.GetString(1) });
+        return lista;
     }
 
     public static List<ClienteDto> ClientesPorCiudadDapper(SqliteConnection cn, string ciudad)
     {
-        // TODO: Con Dapper: cn.Query<ClienteDto>(sql, parametros). El SQL es tuyo; Dapper solo mapea.
-        throw new NotImplementedException();
+        const string sql = "SELECT Id, Name FROM Customers WHERE City = @ciudad ORDER BY Id";
+        return cn.Query<ClienteDto>(sql, new { ciudad }).ToList();
     }
 
     public static List<ClienteDto> ClientesPorCiudadEf(TiendaContext db, string ciudad)
     {
-        // TODO: Con EF Core: LINQ sobre db.Customers, sin seguimiento (AsNoTracking), ordenado por Id y proyectado a ClienteDto con Select.
-        throw new NotImplementedException();
+        return db.Customers
+            .AsNoTracking()
+            .Where(c => c.City == ciudad)
+            .OrderBy(c => c.Id)
+            .Select(c => new ClienteDto { Id = c.Id, Name = c.Name })
+            .ToList();
     }
 }
 
@@ -40,13 +51,16 @@ public class ClienteServicio
 
     public int Crear(string nombre, string ciudad)
     {
-        // TODO: Crea un contexto NUEVO con _factory() dentro de un using, añade el cliente, guarda y devuelve su Id.
-        throw new NotImplementedException();
+        using var db = _factory();
+        var cliente = new Customer { Name = nombre, City = ciudad };
+        db.Customers.Add(cliente);
+        db.SaveChanges();
+        return cliente.Id;
     }
 
     public int Contar()
     {
-        // TODO: Otro contexto nuevo (uno por operación): devuelve cuántos clientes hay.
-        throw new NotImplementedException();
+        using var db = _factory();
+        return db.Customers.Count();
     }
 }
