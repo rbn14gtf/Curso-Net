@@ -14,7 +14,9 @@ public class PagosTptContext : DbContext
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Customer>().OwnsOne(c => c.Address);                      // (ya hecho)
-        // TODO: TPT: b.Entity<Payment>().UseTptMappingStrategy(); y una tabla por subtipo: PagoTarjeta -> "PagosTarjeta", Transferencia -> "Transferencias" (ToTable).
+        b.Entity<Payment>().UseTptMappingStrategy();
+        b.Entity<PagoTarjeta>().ToTable("PagosTarjeta");
+        b.Entity<Transferencia>().ToTable("Transferencias");
 
     }
 
@@ -31,7 +33,9 @@ public class PagosTpcContext : DbContext
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Customer>().OwnsOne(c => c.Address);                      // (ya hecho)
-        // TODO: TPC (EF Core 7+): b.Entity<Payment>().UseTpcMappingStrategy(); y una tabla por subtipo concreto: "PagosTarjeta" y "Transferencias".
+        b.Entity<Payment>().UseTpcMappingStrategy();
+        b.Entity<PagoTarjeta>().ToTable("PagosTarjeta");
+        b.Entity<Transferencia>().ToTable("Transferencias");
 
     }
 

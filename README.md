@@ -1,8 +1,8 @@
-# Lab 1 · Tecnologías de acceso a datos
+# Lab 3 · Consulta de datos de entidades
 
-**Duración:** 40 min
+**Duración:** 45 min
 
-Resolver la misma consulta con **ADO.NET**, **Dapper** y **EF Core**, comparar las tres y decidir cuándo usar cada una. Aprender también el ciclo de vida correcto del `DbContext`.
+Escribir consultas **LINQ** eficientes (proyecciones, carga ansiosa, agrupaciones), usar **SQL crudo seguro**, leer vistas con `SqlQuery<T>` y acceder a bajo nivel con ADO.NET. Sustituye a Entity SQL, EntityClient y procedimientos almacenados del temario clásico.
 
 | Versión | Para quién | Contenido |
 |---|---|---|

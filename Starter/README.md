@@ -1,10 +1,10 @@
-# Lab 2 · Construcción de modelos (Starter)
+# Lab 3 · Consulta de datos de entidades (Starter)
 
-**Duración:** 50 min (las Partes B y los retos opcionales son trabajo autónomo) · **Requisitos:** .NET 8 SDK (sin servidor de base de datos: usa SQLite)
+**Duración:** 45 min (las Partes B y los retos opcionales son trabajo autónomo) · **Requisitos:** .NET 8 SDK (sin servidor de base de datos: usa SQLite)
 
 ## Objetivo
 
-Configurar un modelo con **Fluent API** (precisión, índices, relaciones, tipos propios, conversores y herencia) y gestionar su evolución con **migraciones** y **scaffolding**.
+Escribir consultas **LINQ** eficientes (proyecciones, carga ansiosa, agrupaciones), usar **SQL crudo seguro**, leer vistas con `SqlQuery<T>` y acceder a bajo nivel con ADO.NET. Sustituye a Entity SQL, EntityClient y procedimientos almacenados del temario clásico.
 
 ## Cómo trabajar
 
@@ -23,100 +23,116 @@ dotnet test --filter "FullyQualifiedName~Nombre"   # solo las que contengan Nomb
 
 | Fichero | Contenido |
 |---|---|
-| `Data/ModelConfig.cs` | la configuración del modelo: ocho `TODO` (1-7 y N:M) |
-| `Lab/Jerarquias.cs` | dos contextos mínimos para comparar TPT y TPC |
-| `Data/DesignTimeFactory.cs` | permite ejecutar `dotnet ef` sin aplicación web (ya hecho) |
-| `Model/Entities.cs` | las entidades de la tienda (aquí va la anotación `[MaxLength]`; puedes añadir `Customer.Phone` para la Parte B) |
-| `Tests/ModeloTests.cs` | pruebas que inspeccionan el modelo y el esquema generado |
+| `Lab/Consultas.cs` | las once consultas (aquí están los `TODO`) |
+| `Lab/Funciones.cs` | función de base de datos mapeada con `HasDbFunction` |
+| `Tests/ConsultasTests.cs` | pruebas; varias cuentan los comandos SQL ejecutados |
+| `Tests/MisPruebasTests.cs` | las pruebas que escribes tú |
+
+> **Nota:** SQLite no suma ni ordena `decimal`; estos labs guardan los importes como `double` (ver `TiendaContext.ConfigureConventions`). En SQL Server no haría falta.
 
 ## Tareas
 
-### 1. Precisión de decimales
+### 1. Proyección a un DTO
 
-**Dónde:** `ModelConfig.cs`, `Product.Price`  
-**Qué hacer / guía:** `b.Entity<Product>().Property(p => p.Price).HasPrecision(10, 2);`  
-**Lo valida:** `T1_precio_con_precision_10_2`
+**Dónde:** `UltimosPedidos`  
+**Qué hacer / guía:** `Select` a `PedidoResumen` usando `o.Customer.Name` y `o.Lines.Sum(l => l.Quantity * l.UnitPrice)`; `OrderByDescending(o => o.Date).Take(n)`; `AsNoTracking`.  
+**Lo valida:** `UltimosPedidos_proyecta_en_una_sola_consulta`
 
-### 2. Token de concurrencia
+### 2. Carga ansiosa
 
-**Dónde:** `Product.Version`  
-**Qué hacer / guía:** `.Property(p => p.Version).IsConcurrencyToken()`  
-**Lo valida:** `T2_version_es_token_de_concurrencia`
+**Dónde:** `PedidoCompleto`  
+**Qué hacer / guía:** `Include(o => o.Customer).Include(o => o.Lines).ThenInclude(l => l.Product).FirstOrDefault(...)`.  
+**Lo valida:** `PedidoCompleto_carga_el_grafo_con_una_consulta`
 
-### 3. Índice único
+### 3. Agrupación en el servidor
 
-**Dónde:** `Customer.Email`  
-**Qué hacer / guía:** `HasIndex(c => c.Email).IsUnique()`  
-**Lo valida:** `T3_email_tiene_indice_unico`, `Email_duplicado_es_rechazado_por_la_base`
+**Dónde:** `TopProductos`  
+**Qué hacer / guía:** `GroupBy(l => l.Product.Name)`, ordena por `g.Sum(l => l.Quantity)` **antes** del `Select`, `Take(n)` y proyecta a `VentaProducto`.  
+**Lo valida:** `TopProductos_agrupa_en_el_servidor`
 
-### 4. Tipo propio (owned)
+### 4. SQL crudo seguro
 
-**Dónde:** `Customer.Address`  
-**Qué hacer / guía:** `OwnsOne(c => c.Address)`: las columnas `Address_Street` y `Address_PostalCode` van en la tabla `Customers`.  
-**Lo valida:** `T4_address_es_tipo_propio`, `El_script_de_creacion_refleja_el_modelo`
+**Dónde:** `BuscarPorNombre`  
+**Qué hacer / guía:** `var patron = $"%{texto}%"; db.Products.FromSql($"SELECT * FROM Products WHERE Name LIKE {patron}")`. La interpolación de `FromSql` se convierte en **parámetro**.  
+**Lo valida:** `BuscarPorNombre_usa_parametros`
 
-### 5. Relación con borrado restringido
+### 5. Una vista en lugar del procedimiento
 
-**Dónde:** `Order.Customer`  
-**Qué hacer / guía:** `HasOne(o => o.Customer).WithMany(c => c.Orders).HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict)`  
-**Lo valida:** `T5_borrado_de_cliente_restringido`, `No_se_puede_borrar_un_cliente_con_pedidos`
+**Dónde:** `CrearVistaVentas`  
+**Qué hacer / guía:** `db.Database.ExecuteSqlRaw("CREATE VIEW IF NOT EXISTS VentasMes AS SELECT strftime('%Y-%m', o.Date) AS Mes, SUM(l.Quantity * l.UnitPrice) AS Importe FROM Orders o JOIN OrderLines l ON l.OrderId = o.Id GROUP BY Mes")`  
+**Lo valida:** `Vista_de_ventas_se_lee_con_SqlQuery`
 
-### 6. Enum como texto
+### 6. Leer la vista
 
-**Dónde:** `Order.Status`  
-**Qué hacer / guía:** `HasConversion<string>().HasMaxLength(20)`  
-**Lo valida:** `T6_estado_se_guarda_como_texto`
+**Dónde:** `VentasPorMes`  
+**Qué hacer / guía:** `db.Database.SqlQuery<VentaMes>($"SELECT Mes, Importe FROM VentasMes ORDER BY Mes").ToList()` (EF Core 7+: tipos que no son entidades).  
+**Lo valida:** `Vista_de_ventas_se_lee_con_SqlQuery`
 
-### 7. Herencia TPH
+### 7. ADO.NET sobre el contexto (antes EntityClient)
 
-**Dónde:** `Payment`  
-**Qué hacer / guía:** `HasDiscriminator<string>("Tipo").HasValue<PagoTarjeta>("T").HasValue<Transferencia>("B")`  
-**Lo valida:** `T7_pagos_con_discriminador_Tipo`, `Pagos_polimorficos_se_guardan_y_se_leen`
+**Dónde:** `ContarPedidosAdo`  
+**Qué hacer / guía:** `db.Database.GetDbConnection()`, ábrela si está cerrada, `CreateCommand()`, `SELECT COUNT(*) FROM Orders` y `ExecuteScalar()`.  
+**Lo valida:** `ContarPedidos_con_ADO_NET_sobre_la_conexion_del_contexto`
 
-### 8. Anotación de datos
+### 8. Ver el SQL sin ejecutarlo
 
-**Dónde:** `Model/Entities.cs`, `Product.Name`  
-**Qué hacer / guía:** Añade `[MaxLength(120)]` sobre la propiedad `Name` (el `TODO` está dentro de la clase).  
-**Lo valida:** `T8_el_nombre_del_producto_tiene_longitud_maxima_120`
+**Dónde:** `SqlPedidosDesde`  
+**Qué hacer / guía:** `db.Orders.Where(o => o.Date >= desde).ToQueryString()`  
+**Lo valida:** `ToQueryString_muestra_el_SQL_sin_ejecutarlo`
 
-### 9. Relación N:M con tabla propia
+### 9. Una consulta por colección (AsSplitQuery)
 
-**Dónde:** `ModelConfig.cs`  
-**Qué hacer / guía:** `b.Entity<Product>().HasMany(p => p.Tags).WithMany(t => t.Products).UsingEntity(j => j.ToTable("ProductTags"));`  
-**Lo valida:** `T9_relacion_N_M_con_tabla_ProductTags`, `T9_los_productos_se_etiquetan_y_se_consultan_por_etiqueta`
+**Dónde:** `PedidoDividido`  
+**Qué hacer / guía:** Como `PedidoCompleto` pero añade `Include(o => o.Payments)` y `AsSplitQuery()`.  
+**Lo valida:** `PedidoDividido_usa_una_consulta_por_coleccion`
 
-### 10. TPT: una tabla por tipo
+### 10. Carga explícita
 
-**Dónde:** `Lab/Jerarquias.cs`, `PagosTptContext`  
-**Qué hacer / guía:** `UseTptMappingStrategy()` sobre `Payment` y `ToTable("PagosTarjeta")` / `ToTable("Transferencias")` para los subtipos.  
-**Lo valida:** `T10_TPT_una_tabla_por_tipo_con_tabla_base`
+**Dónde:** `CargarLineasExplicito`  
+**Qué hacer / guía:** `db.Orders.Find(id)` y después `db.Entry(pedido).Collection(o => o.Lines).Load()`; devuelve `pedido.Lines.Count`.  
+**Lo valida:** `Carga_explicita_hace_una_consulta_mas_cuando_se_pide`
 
-### 11. TPC: una tabla por tipo concreto
+### 11. Función de base de datos (HasDbFunction)
 
-**Dónde:** `Lab/Jerarquias.cs`, `PagosTpcContext`  
-**Qué hacer / guía:** `UseTpcMappingStrategy()` sobre `Payment` y las mismas tablas para los subtipos.  
-**Lo valida:** `T11_TPC_sin_tabla_base_y_columnas_repetidas`
+**Dónde:** `Funciones.cs` y `ProductosConIva`  
+**Qué hacer / guía:** En `ConfigureExtra`: `b.HasDbFunction(typeof(Funciones).GetMethod(nameof(Funciones.Iva))!).HasName("iva")`. Después `Select(p => new { p.Name, ConIva = Funciones.Iva(p.Price) })`. El test registra la función `iva` en SQLite.  
+**Lo valida:** `Funcion_de_base_de_datos_mapeada_con_HasDbFunction`
 
-## Parte B · Migraciones y scaffolding (sin pruebas automáticas)
+### 12. Escribir tus propias pruebas
 
-Con las siete tareas hechas, ejecuta en la carpeta del lab:
+**Dónde:** `Tests/MisPruebasTests.cs` (**este archivo es tuyo**)  
+**Qué hacer / guía:** Cada prueba tiene un `TODO` que describe qué comprobar: email repetido con SQLite (falla), el mismo caso con `UseInMemoryDatabase` (no falla) y `AsNoTracking`.  
+**Lo valida:** `MisPruebasTests` (3 pruebas)
 
-```bash
-dotnet tool install --global dotnet-ef --version 8.*                      # una sola vez
-dotnet ef migrations add Inicial                     # genera la carpeta Migrations/
-dotnet ef database update                            # crea tienda.db
+## Parte B · Procedimientos almacenados (SQL Server, opcional — no verificado aquí)
+
+SQLite no tiene procedimientos almacenados, por eso las tareas 5-6 usan una vista y la 9 una **función de base de datos**. Si dispones de SQL Server (LocalDB o Docker `mcr.microsoft.com/mssql/server`), cambia `UseSqlite` por `UseSqlServer` y prueba:
+
+```sql
+CREATE PROCEDURE dbo.TopProductos @n int AS
+  SELECT TOP (@n) p.* FROM Products p ORDER BY p.Stock DESC;
+GO
+CREATE PROCEDURE dbo.ContarPedidos @clienteId int, @total int OUTPUT AS
+  SELECT @total = COUNT(*) FROM Orders WHERE CustomerId = @clienteId;
 ```
 
-1. Abre `Migrations/*_Inicial.cs` y localiza el índice único del email, la columna `Address_Street` y la columna `Tipo`.
-2. Añade `public string? Phone { get; set; }` a `Customer`, crea la migración `AnadirTelefono` y mira su `Up`/`Down`.
-3. Genera el script SQL con `dotnet ef migrations script -o deploy.sql` (en SQL Server añadirías `--idempotent`; **SQLite no lo soporta**).
-4. Revierte con `dotnet ef database update Inicial` y elimina la última con `dotnet ef migrations remove`.
-5. Scaffolding inverso: `dotnet ef dbcontext scaffold "Data Source=tienda.db" Microsoft.EntityFrameworkCore.Sqlite --output-dir Scaffold --context ScaffoldContext --force`. Compara las entidades generadas con las tuyas: ¿qué convenciones coinciden y cuáles no?
+```csharp
+// Lectura: devuelve entidades (NO se puede seguir componiendo con LINQ tras EXEC)
+var top = await db.Products.FromSql($"EXEC dbo.TopProductos {n}").ToListAsync();
+
+// Parámetro de salida
+var total = new SqlParameter("@total", SqlDbType.Int) { Direction = ParameterDirection.Output };
+await db.Database.ExecuteSqlRawAsync("EXEC dbo.ContarPedidos @clienteId, @total OUT", new SqlParameter("@clienteId", 1), total);
+
+// EF Core 7+: insertar/actualizar/borrar con procedimientos (equivalente al mapeo de SP del EDMX)
+b.Entity<Product>().InsertUsingStoredProcedure("Product_Insert", sp => sp
+    .HasParameter(p => p.Id, p => p.IsOutput()).HasParameter(p => p.Name).HasParameter(p => p.Price));
+```
 
 ## Reto opcional
 
-Añade un enum `Estado` a `Payment` guardado como texto y configura **todos** los enums del modelo a la vez con `ConfigureConventions` (`c.Properties<Enum>().HaveConversion<string>()`).
+Escribe una consulta dinámica `Buscar(db, ciudad?, categoria?)` que componga un `IQueryable` añadiendo `Where` solo para los filtros informados (el sustituto de Entity SQL dinámico).
 
 ## Entregable
 
-Todas las pruebas en verde y una nota breve (5 líneas) con lo que más te ha sorprendido de construcción de modelos.
+Todas las pruebas en verde y una nota breve (5 líneas) con lo que más te ha sorprendido de consulta de datos de entidades.

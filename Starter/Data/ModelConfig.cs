@@ -6,28 +6,14 @@ public partial class TiendaContext
 {
     void ConfigureModel(ModelBuilder b)
     {
-        // TODO: 1. Product.Price: precisión 10 y escala 2 (HasPrecision).
-
-
-        // TODO: 2. Product.Version: token de concurrencia (IsConcurrencyToken).
-
-
-        // TODO: 3. Customer.Email: índice ÚNICO (HasIndex + IsUnique).
-
-
-        // TODO: 4. Customer.Address: tipo propio (OwnsOne) para que sus columnas vayan en la tabla Customers.
-
-
-        // TODO: 5. Order -> Customer: relación 1:N con borrado RESTRINGIDO (no se puede borrar un cliente con pedidos).
-
-
-        // TODO: 6. Order.Status: guárdalo como texto (HasConversion<string>) con longitud máxima 20.
-
-
-        // TODO: 7. Payment: herencia TPH con discriminador "Tipo" (string): PagoTarjeta = "T", Transferencia = "B".
-
-
-        // TODO: 9. Relación N:M Product <-> Tag con la tabla intermedia llamada "ProductTags" (HasMany/WithMany/UsingEntity + ToTable).
-
+        b.Entity<Product>().Property(p => p.Price).HasPrecision(10, 2);
+        b.Entity<Product>().Property(p => p.Version).IsConcurrencyToken();
+        b.Entity<Customer>().HasIndex(c => c.Email).IsUnique();
+        b.Entity<Customer>().OwnsOne(c => c.Address);
+        b.Entity<Order>().HasOne(o => o.Customer).WithMany(c => c.Orders)
+            .HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Order>().Property(o => o.Status).HasConversion<string>().HasMaxLength(20);
+        b.Entity<Payment>().HasDiscriminator<string>("Tipo")
+            .HasValue<PagoTarjeta>("T").HasValue<Transferencia>("B");
     }
 }
