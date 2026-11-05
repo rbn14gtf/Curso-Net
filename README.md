@@ -1,8 +1,8 @@
-# Lab 3 · Consulta de datos de entidades
+# Lab 5 · Concurrencia y transacciones
 
 **Duración:** 45 min
 
-Escribir consultas **LINQ** eficientes (proyecciones, carga ansiosa, agrupaciones), usar **SQL crudo seguro**, leer vistas con `SqlQuery<T>` y acceder a bajo nivel con ADO.NET. Sustituye a Entity SQL, EntityClient y procedimientos almacenados del temario clásico.
+Resolver conflictos de **concurrencia optimista** con tres políticas (gana la BD, gana el cliente, mezclar) y escribir una **transacción** que se deshace por completo cuando falla.
 
 | Versión | Para quién | Contenido |
 |---|---|---|
